@@ -17,7 +17,7 @@ import numpy as np
 # i = index for current time value. (int)
 # a = Dilation type: Automated or Standard (str)
 # f = Skip between each height step in resolution (int)
-def haarcovtransfm(allprf,a):
+def haarcovtransfm(allprf,a,summed=True):
 #### Declare global variables, with a0 being the minimum dilation posible.
 ####
 	global fi
@@ -35,23 +35,14 @@ def haarcovtransfm(allprf,a):
 #	if a=='Auto':
 	detail=True
 	wf=wfab(allprf,a)
-	return wf
+	if summed:
+		return np.sum(wf,axis=1)
+	else:
+		return wf
 # if not Automated, Standard implies using standard dilation a = 60m (found by Grabon and useful for UNAM profiles.
 #	elif a=='Standard':
 #		a=60
 #		detail=False
-# Call recursive function to find mlh (clearing out bottom values, i.e., no floor mlh value is permitted.
-# Inspect firstmlh function below if needed.
-	newmlh,wf=firstmlh(prf,a,bottom)
-# If Automated, find top, bot and mlh using recursive algorithm.
-	if detail:
-		bot,newmlh,top=findtops(prf,wf,newmlh,a)
-	else:
-		bot=newmlh
-		top=newmlh
-### RETURN MLH ####
-	return bot,newmlh,top
-
 
 #######################################################################################################################
 ### haarval = function to compute wavelet coefficient Wf(a,b) for every a,b.
