@@ -9,6 +9,11 @@
 # Import numpy for math processing
 import matplotlib.pyplot as plt
 import numpy as np
+import datetime
+import pandas as pd
+import xarray as xr
+from typing import List, Union
+import logging
 #### Main Function haarcovtransform #####################
 # 6 inputs:
 # allprf= Retrodispersion profile matrix[m,n] where
@@ -17,7 +22,7 @@ import numpy as np
 # i = index for current time value. (int)
 # a = Dilation type: Automated or Standard (str)
 # f = Skip between each height step in resolution (int)
-def haarcovtransfm(allprf,a,summed=True):
+def haarcovtransfm(allprf,a,meaned=True,summed=False):
 #### Declare global variables, with a0 being the minimum dilation posible.
 ####
 	global fi
@@ -37,6 +42,8 @@ def haarcovtransfm(allprf,a,summed=True):
 	wf=wfab(allprf,a)
 	if summed:
 		return np.sum(wf,axis=1)
+	elif meaned:
+		return np.mean(wf,axis=1)
 	else:
 		return wf
 # if not Automated, Standard implies using standard dilation a = 60m (found by Grabon and useful for UNAM profiles.
@@ -125,3 +132,177 @@ def wfab(prf,a):
 #		break	
 
 	return wf
+def calc_msd(dataset,year,ds):
+	if len(ds)<400:
+		daya=np.arange(70,120,2)
+	else:
+		daya=np.arange(50,140,2)
+
+	dayo=np.arange(34,94,2)
+	thr=60
+	date_init=datetime.datetime(year-1,10,15).date()
+	date_end=datetime.datetime(year+1,5,10).date()
+
+	precipitation=ds[(ds.time.dt.date>date_init)&(ds.time.dt.date<date_end)]#np.reshape(np.array([ddf.values,ddf.values,ddf.values]),(leni*3,))
+	print('calculating msd time',year,dataset,len(precipitation),len(ds))	
+	newt=pd.to_datetime(precipitation.time)
+	output=haarcovtransfm(precipitation,daya)
+	print(output)
+	haarsum=output#np.mean(output,axis=1)
+	print(np.min(haarsum))#=output#np.mean(output,axis=1)
+	onset_i=np.where(haarsum==np.max(haarsum))[0]
+	onset_f=np.where(haarsum==np.min(haarsum))[0]
+	onset_date=pd.to_datetime(newt[onset_i].values).date
+	end_date=pd.to_datetime(newt[onset_f].values).date
+	print(year,onset_date,end_date)
+	coef1=np.max(haarsum)
+	msd_precipitation=precipitation.isel(time=np.arange(onset_i-18,onset_f-8))#[int(o_doy-2):int(e_doy+2)]#int(onset_f+40)]
+	msdnewt=msd_precipitation.time
+	haarsum=haarcovtransfm(msd_precipitation,dayo)
+	msde_i=np.where(haarsum==np.max(haarsum[thr:]))[0]
+	msdo_i=np.where(haarsum==np.min(haarsum[:-thr]))[0]
+
+	msdedate=pd.to_datetime(msdnewt[msde_i].values).date
+	msdodate=pd.to_datetime(msdnewt[msdo_i].values).date
+	jjas_mean = float(np.mean(ds[(ds.time.dt.date>onset_date)&(ds.time.dt.date<end_date)]))#np.reshape(np.array([ddf.values,ddf.values,ddf.values]),(leni*3,))
+	coef2=np.max(haarsum[thr:-thr])-np.min(haarsum[:-thr])
+	coef1=np.max(haarsum[thr:-thr])#-np.min(haarsum[:-50])
+	coef3=np.min(haarsum[:-thr])
+	outlist=[year,onset_date[0],end_date[0],msdodate[0],msdedate[0],coef3,coef1,coef2,jjas_mean]
+	outstrlist=[str(element) for element in outlist]
+	string=','.join(outstrlist)
+	f.write(string+'\n')
+	f.close()
+	#self.plot_tmsd(precipitation,newt,onset_date,end_date,msdodate,msdedate,haarsum,coef1,coef2,msdnewt,year)
+	return	
+def calc_msd(
+    dataset_name: str,
+    year: int,
+    ds: xr.DataArray,
+    output_file: str = "alldatasets_MSD_obs_table.txt"
+) -> List[Union[int, datetime.date, float]]:
+    """
+    Calculate Midsummer Drought (MSD) timing metrics for a given year.
+
+    This function computes the onset and end dates of the rainy season and the midsummer drought
+    using a Haar wavelet covariance transform on daily precipitation data. Results are appended
+    to a CSV-style text file.
+
+    Parameters
+    ----------
+    dataset_name : str
+        Identifier for the dataset, used in logging output.
+    year : int
+        Year for which the MSD metrics are calculated.
+    ds : xr.DataArray
+        Time-indexed precipitation data. Must have a 'time' coordinate.
+    output_file : str, optional
+        Path to the output CSV file where results are appended. Default is 'MSD_obs_table.txt'.
+
+    Returns
+    -------
+    results : list
+        A list containing:
+        - year (int)
+        - rainy season onset_date (datetime.date)
+        - rainy season end_date (datetime.date)
+        - MSD onset within season (datetime.date)
+        - MSD end within season (datetime.date)
+        - coef3 (float): minimum wavelet coefficient prior to MSD
+        - coef1 (float): maximum wavelet coefficient during MSD
+        - coef2 (float): amplitude (coef1 - coef3)
+        - jjas_mean (float): mean precipitation between onset and end
+
+    Notes
+    -----
+    - Uses `haarcovtransfm` to compute the Haar covariance transform.
+    - Onset and end are determined by the max/min of the seasonal transform.
+    - Within-season MSD metrics use a shorter window around the drought period.
+    """
+    # Configure logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+
+    # Define Haar transform windows based on dataset length
+    if ds.size < 400:
+        window_season = np.arange(70, 120, 2)
+    else:
+        window_season = np.arange(50, 140, 2)
+    window_msd = np.arange(34, 94, 2)
+    threshold = 60
+
+    # Define analysis period: Oct 15 previous year to May 10 next year
+    date_start = datetime.date(year - 1, 10, 15)
+    date_end = datetime.date(year + 1, 5, 10)
+    print(date_start,date_end)
+    print(ds)
+    # Subset the precipitation series
+    precip = ds.sel(
+        time=slice(pd.to_datetime(date_start), pd.to_datetime(date_end))
+    )
+    
+    logger.info(
+        "Calculating MSD for %s, year %d: %d time points",
+        dataset_name,
+        year,
+        precip.size,
+    )
+    print(precip)
+    # Compute Haar covariance transform over the full season
+    times = pd.to_datetime(precip.time.values)
+    season_transform = haarcovtransfm(precip, window_season)
+
+    # Identify rainy season onset and end by max/min of transform
+    onset_idx = int(np.argmax(season_transform))
+    end_idx = int(np.argmin(season_transform))
+    onset_date = times[onset_idx].date()
+    end_date = times[end_idx].date()
+    print(onset_date,end_date)
+    logger.info(
+        "Year %d rainy season: onset %s, end %s",
+        year,
+        onset_date,
+        end_date,
+    )
+
+    # Extract data between onset and end for MSD analysis
+    rainy_period = precip.sel(
+        time=slice(pd.to_datetime(onset_date), pd.to_datetime(end_date))
+    )
+    rainy_times = pd.to_datetime(rainy_period.time.values)
+
+    # Compute Haar transform for midsummer drought period
+    msd_transform = haarcovtransfm(rainy_period, window_msd)
+
+    # Identify MSD onset and end indices within rainy period
+    msd_onset_idx = int(np.argmin(msd_transform[:-threshold]))
+    msd_end_idx = int(np.argmax(msd_transform[threshold:])) + threshold
+    msd_onset_date = rainy_times[msd_onset_idx].date()
+    msd_end_date = rainy_times[msd_end_idx].date()
+
+    # Compute coefficients and mean precipitation
+    coef3 = float(np.min(msd_transform[:-threshold]))
+    coef1 = float(np.max(msd_transform[threshold:]))
+    coef2 = coef1 - coef3
+    jjas_mean = float(rainy_period.mean().item())
+
+    # Prepare results list
+    results = [
+        year,
+        onset_date,
+        end_date,
+        msd_onset_date,
+        msd_end_date,
+        coef3,
+        coef1,
+        coef2,
+        jjas_mean,
+    ]
+
+    # Append to output file
+    with open(output_file, "a") as f:
+        f.write(
+            ",".join(str(x) for x in results) + "\n"
+        )
+
+    return results
