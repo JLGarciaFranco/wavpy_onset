@@ -132,54 +132,11 @@ def wfab(prf,a):
 #		break	
 
 	return wf
-def calc_msd(dataset,year,ds):
-	if len(ds)<400:
-		daya=np.arange(70,120,2)
-	else:
-		daya=np.arange(50,140,2)
-
-	dayo=np.arange(34,94,2)
-	thr=60
-	date_init=datetime.datetime(year-1,10,15).date()
-	date_end=datetime.datetime(year+1,5,10).date()
-
-	precipitation=ds[(ds.time.dt.date>date_init)&(ds.time.dt.date<date_end)]#np.reshape(np.array([ddf.values,ddf.values,ddf.values]),(leni*3,))
-	print('calculating msd time',year,dataset,len(precipitation),len(ds))	
-	newt=pd.to_datetime(precipitation.time)
-	output=haarcovtransfm(precipitation,daya)
-	print(output)
-	haarsum=output#np.mean(output,axis=1)
-	print(np.min(haarsum))#=output#np.mean(output,axis=1)
-	onset_i=np.where(haarsum==np.max(haarsum))[0]
-	onset_f=np.where(haarsum==np.min(haarsum))[0]
-	onset_date=pd.to_datetime(newt[onset_i].values).date
-	end_date=pd.to_datetime(newt[onset_f].values).date
-	print(year,onset_date,end_date)
-	coef1=np.max(haarsum)
-	msd_precipitation=precipitation.isel(time=np.arange(onset_i-18,onset_f-8))#[int(o_doy-2):int(e_doy+2)]#int(onset_f+40)]
-	msdnewt=msd_precipitation.time
-	haarsum=haarcovtransfm(msd_precipitation,dayo)
-	msde_i=np.where(haarsum==np.max(haarsum[thr:]))[0]
-	msdo_i=np.where(haarsum==np.min(haarsum[:-thr]))[0]
-
-	msdedate=pd.to_datetime(msdnewt[msde_i].values).date
-	msdodate=pd.to_datetime(msdnewt[msdo_i].values).date
-	jjas_mean = float(np.mean(ds[(ds.time.dt.date>onset_date)&(ds.time.dt.date<end_date)]))#np.reshape(np.array([ddf.values,ddf.values,ddf.values]),(leni*3,))
-	coef2=np.max(haarsum[thr:-thr])-np.min(haarsum[:-thr])
-	coef1=np.max(haarsum[thr:-thr])#-np.min(haarsum[:-50])
-	coef3=np.min(haarsum[:-thr])
-	outlist=[year,onset_date[0],end_date[0],msdodate[0],msdedate[0],coef3,coef1,coef2,jjas_mean]
-	outstrlist=[str(element) for element in outlist]
-	string=','.join(outstrlist)
-	f.write(string+'\n')
-	f.close()
-	#self.plot_tmsd(precipitation,newt,onset_date,end_date,msdodate,msdedate,haarsum,coef1,coef2,msdnewt,year)
-	return	
 def calc_msd(
     dataset_name: str,
     year: int,
     ds: xr.DataArray,
-    output_file: str = "alldatasets_MSD_obs_table.txt"
+    output_file: str = "MSD_obs_table.txt"
 ) -> List[Union[int, datetime.date, float]]:
     """
     Calculate Midsummer Drought (MSD) timing metrics for a given year.
@@ -220,6 +177,7 @@ def calc_msd(
     - Within-season MSD metrics use a shorter window around the drought period.
     """
     # Configure logging
+    output_file=dataset_name+output_file
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
